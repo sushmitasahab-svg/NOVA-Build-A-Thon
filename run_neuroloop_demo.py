@@ -1,0 +1,134 @@
+"""
+run_neuroloop_demo.py
+
+The script you actually run. Loads an EEG recording, replays it as if
+it were streaming live, and prints real-time-style terminal feedback
+using the full NeuroLoop chain:
+
+    ReplayEEGSource -> state_vector -> PersonalBaseline
+        -> readiness -> smoothing -> state_machine -> feedback_cli
+
+USAGE:
+    python run_neuroloop_demo.py
+    python run_neuroloop_demo.py --source eo_ec --max-time 200
+    python run_neuroloop_demo.py --source chess --calibration 60
+
+Add new recordings to the RECORDINGS dict below as they become
+available (e.g. the Unicorn chess recording, once recorded).
+"""
+
+import argparse
+import sys
+from pathlib import Path
+
+PROJECT_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(PROJECT_ROOT))
+
+from src.preprocessing.eeg_preprocessing import load_and_preprocess
+from src.neuroloop.eeg_source import ReplayEEGSource
+from src.neuroloop.state_vector import compute_raw_state_features, compute_signal_quality
+from src.neuroloop.baseline import PersonalBaseline
+from src.neuroloop.readiness import compute_readiness
+from src.neuroloop.smoothing import ReadinessSmoother
+from src.neuroloop.state_machine import ReadinessStateMachine
+from src.neuroloop import feedback_cli, config
+
+RECORDINGS = {
+    "eo_ec": PROJECT_ROOT / "data" / "raw" / "eyes_open_closed" /
+             "Ewing_Patrick_2026-08-10_13-07-25_EO-EC.cnt",
+    # "chess": PROJECT_ROOT / "data" / "raw" / "chess_unicorn" / "<filename>.cnt",
+    #   add this once the Unicorn chess recording exists - no other
+    #   code needs to change, since ReplayEEGSource works on any
+    #   preprocessed recording that has our 8 channels of interest.
+}
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="NeuroLoop terminal feedback demo")
+    parser.add_argument("--source", choices=list(RECORDINGS.keys()), default="eo_ec",
+                         help="Which recording to replay (see RECORDINGS dict).")
+    parser.add_argument("--calibration", type=float, default=config.CALIBRATION_DURATION_SEC,
+                         help="Calibration period length in seconds.")
+    parser.add_argument("--max-time", type=float, default=None,
+                         help="Stop replay after this many seconds of recording time "
+                              "(useful for quick tests instead of running the whole file).")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+    cnt_path = RECORDINGS[args.source]
+
+    print(f"Loading and preprocessing: {cnt_path.name}")
+    raw = load_and_preprocess(cnt_path)
+    source = ReplayEEGSource(raw)
+
+    missing = [c for c in config.CHANNELS_OF_INTEREST if c not in source.ch_names]
+    if missing:
+        print(f"ERROR: this recording is missing required channels: {missing}")
+        print("Cannot proceed - the state vector needs all of "
+              f"{config.CHANNELS_OF_INTEREST}.")
+        return
+    channel_idx = [source.ch_names.index(c) for c in config.CHANNELS_OF_INTEREST]
+
+    print(feedback_cli.format_calibration_start(args.calibration))
+
+    baseline = PersonalBaseline()
+    smoother = ReadinessSmoother()
+    state_machine = ReadinessStateMachine()
+    calibrated = False
+
+    has_more = True
+    while has_more:
+        window = source.get_window(config.WINDOW_LENGTH_SEC)
+
+        if window is not None:
+            window_subset = window[channel_idx, :]
+            quality = compute_signal_quality(window_subset)
+            raw_features = compute_raw_state_features(
+                window_subset, source.sfreq, config.CHANNELS_OF_INTEREST
+            )
+
+            if source.current_time <= args.calibration:
+                baseline.add_calibration_sample(raw_features)
+
+            else:
+                if not calibrated:
+                    baseline.fit()
+                    calibrated = True
+                    print(feedback_cli.format_baseline_established(
+                        source.current_time, baseline.summary()
+                    ))
+
+                if quality < config.QUALITY_THRESHOLD:
+                    print(feedback_cli.format_signal_uncertain(source.current_time, quality))
+                    # Freeze: feed reliable=False so the smoother does not update,
+                    # but the state machine still needs a value (or None) to check.
+                    smoother.update(0.0, reliable=False)
+                    state_machine.update(smoother.value, source.current_time)
+
+                else:
+                    deviations = baseline.deviation(raw_features)
+                    readiness_result = compute_readiness(deviations, quality)
+                    smoothed = smoother.update(
+                        readiness_result["raw_score"], readiness_result["reliable"]
+                    )
+                    transition = state_machine.update(smoothed, source.current_time)
+
+                    print(feedback_cli.format_status_line(
+                        source.current_time, transition["state"], smoothed, quality
+                    ))
+                    if transition["changed"]:
+                        print(feedback_cli.format_transition_block(
+                            source.current_time, transition, readiness_result, smoothed
+                        ))
+
+        has_more = source.advance(config.STEP_SEC)
+        if args.max_time is not None and source.current_time > args.max_time:
+            break
+
+    print(feedback_cli.format_final_summary(source.current_time, state_machine.state))
+
+
+if __name__ == "__main__":
+    main()
