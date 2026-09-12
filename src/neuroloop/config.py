@@ -49,9 +49,9 @@ QUALITY_THRESHOLD = 0.75  # minimum fraction of usable channels to trust the rea
 # threshold and stay there for its own minimum duration. Using
 # different thresholds to enter vs. exit each state (hysteresis) is
 # what stops the system from flickering back and forth.
-HIGH_LOAD_ENTER_THRESHOLD = 70
+HIGH_LOAD_ENTER_THRESHOLD = 85
 HIGH_LOAD_ENTER_MIN_DURATION_SEC = 2.0
-READY_RECOVER_THRESHOLD = 80
+READY_RECOVER_THRESHOLD = 90
 READY_RECOVER_MIN_DURATION_SEC = 3.0
 PAUSE_ENTER_THRESHOLD = 45
 PAUSE_ENTER_MIN_DURATION_SEC = 3.0
