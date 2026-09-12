@@ -33,6 +33,7 @@ from src.neuroloop.readiness import compute_readiness
 from src.neuroloop.smoothing import ReadinessSmoother
 from src.neuroloop.state_machine import ReadinessStateMachine
 from src.neuroloop import feedback_cli, config
+from src.neuroloop.music_controller import MusicController
 
 # Each entry: path to the recording, which loader function to use, the
 # calibration duration for that session, and (optionally) real move
