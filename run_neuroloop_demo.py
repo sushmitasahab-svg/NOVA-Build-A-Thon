@@ -19,6 +19,7 @@ available.
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -77,6 +78,10 @@ def parse_args():
     parser.add_argument("--max-time", type=float, default=None,
                          help="Stop replay after this many seconds of recording time "
                               "(useful for quick tests instead of running the whole file).")
+    parser.add_argument("--realtime", action="store_true",
+                         help="Pace the replay to real time (pauses config.STEP_SEC "
+                              "seconds between updates), so it sounds/feels like the "
+                              "actual live demo instead of running instantly.")
     return parser.parse_args()
 
 
@@ -166,6 +171,8 @@ def main():
                         music.on_state_change(transition["state"])
 
         has_more = source.advance(config.STEP_SEC)
+        if args.realtime:
+            time.sleep(config.STEP_SEC)
         if args.max_time is not None and source.current_time > args.max_time:
             break
 
