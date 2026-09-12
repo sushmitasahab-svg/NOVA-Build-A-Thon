@@ -101,6 +101,8 @@ def main():
     channel_idx = [source.ch_names.index(c) for c in config.CHANNELS_OF_INTEREST]
 
     print(feedback_cli.format_calibration_start(calibration_duration))
+    music = MusicController()
+    music.start()
 
     baseline = PersonalBaseline()
     smoother = ReadinessSmoother()
@@ -161,6 +163,7 @@ def main():
                         print(feedback_cli.format_transition_block(
                             source.current_time, transition, readiness_result, smoothed
                         ))
+                        music.on_state_change(transition["state"])
 
         has_more = source.advance(config.STEP_SEC)
         if args.max_time is not None and source.current_time > args.max_time:
