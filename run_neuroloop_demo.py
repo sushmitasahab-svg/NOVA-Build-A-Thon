@@ -35,6 +35,17 @@ from src.neuroloop.smoothing import ReadinessSmoother
 from src.neuroloop.state_machine import ReadinessStateMachine
 from src.neuroloop import feedback_cli, config
 from src.neuroloop.music_controller import MusicController
+from src.neuroloop.eeg_source import ReplayEEGSource
+from src.neuroloop.live_eeg_source import LiveEEGSource
+
+# The known channel order for the 24-channel ANT Neuro montage used for
+# the live demo headset (confirmed from the Sassy/rehearsal recordings).
+# Used ONLY as a fallback if the live LSL stream doesn't supply its own
+# channel-name metadata.
+LIVE_DEMO_CHANNEL_ORDER = [
+    "Fp1", "Fp2", "F9", "F7", "F3", "Fz", "F4", "F8", "F10", "M1", "T7",
+    "C3", "C4", "T8", "M2", "Cz", "P7", "P3", "Pz", "P4", "P8", "Oz", "O1", "O2",
+]
 
 # Each entry: path to the recording, which loader function to use, the
 # calibration duration for that session, and (optionally) real move
@@ -82,20 +93,31 @@ def parse_args():
                          help="Pace the replay to real time (pauses config.STEP_SEC "
                               "seconds between updates), so it sounds/feels like the "
                               "actual live demo instead of running instantly.")
+    parser.add_argument("--live", action="store_true",
+                         help="Connect to a real, currently-broadcasting LSL EEG "
+                              "stream instead of replaying a file (used for the "
+                              "actual demo, or for rehearsal with rehearse_live_stream.py).")
     return parser.parse_args()
 
 
 def main():
     args = parse_args()
-    entry = RECORDINGS[args.source]
-    cnt_path = entry["path"]
-    loader = entry["loader"]
-    calibration_duration = args.calibration if args.calibration is not None else entry["calibration"]
-    move_timestamps = entry.get("move_timestamps")
 
-    print(f"Loading and preprocessing: {cnt_path.name}")
-    raw = loader(cnt_path)
-    source = ReplayEEGSource(raw)
+    if args.live:
+        calibration_duration = args.calibration if args.calibration is not None else 60.0
+        move_timestamps = None
+        print("Connecting to live LSL EEG stream...")
+        source = LiveEEGSource(fallback_channel_names=LIVE_DEMO_CHANNEL_ORDER)
+    else:
+        entry = RECORDINGS[args.source]
+        cnt_path = entry["path"]
+        loader = entry["loader"]
+        calibration_duration = args.calibration if args.calibration is not None else entry["calibration"]
+        move_timestamps = entry.get("move_timestamps")
+
+        print(f"Loading and preprocessing: {cnt_path.name}")
+        raw = loader(cnt_path)
+        source = ReplayEEGSource(raw)
 
     missing = [c for c in config.CHANNELS_OF_INTEREST if c not in source.ch_names]
     if missing:
@@ -171,9 +193,9 @@ def main():
                         music.on_state_change(transition["state"])
 
         has_more = source.advance(config.STEP_SEC)
-        if args.realtime:
+        if args.realtime and not args.live:
             time.sleep(config.STEP_SEC)
-        if args.max_time is not None and source.current_time > args.max_time:
+        if not args.live and args.max_time is not None and source.current_time > args.max_time:
             break
 
     print(feedback_cli.format_final_summary(source.current_time, state_machine.state))

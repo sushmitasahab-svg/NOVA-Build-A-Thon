@@ -19,10 +19,10 @@ STEP_SEC = 1.0            # how often we recompute the state
 # so this code runs unchanged whether we're replaying an ANT Neuro file
 # (which happens to include all these channel names too) or reading
 # live from the actual Unicorn headset tomorrow.
-CHANNELS_OF_INTEREST = ["Fz", "C3", "Cz", "C4", "Pz", "PO7", "Oz", "PO8"]
+CHANNELS_OF_INTEREST = ["Fz", "C3", "Cz", "C4", "Pz", "Oz"] #dropping PO7/PO8 because they are not in the ANT Neuro montage
 FRONTAL_CHANNEL = "Fz"
 CENTRAL_CHANNELS = ["C3", "Cz", "C4"]
-POSTERIOR_CHANNELS = ["Pz", "PO7", "Oz", "PO8"]
+POSTERIOR_CHANNELS = ["Pz", "Oz", "O1", "O2", "PO7", "PO8"] 
 
 # ---- Calibration (Section 9) ----
 # The spec recommends 60-120s for a real chess session. We default to
