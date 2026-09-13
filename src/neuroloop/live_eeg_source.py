@@ -144,7 +144,10 @@ class LiveEEGSource(EEGSource):
                     # start near zero) behaves correctly.
                     self._start_timestamp = timestamps[0]
                 for row, ts in zip(chunk, timestamps):
-                    self._sample_buffer.append(row)
+                    # UnicornLSL broadcasts in microvolts, but our pipeline
+                    # assumes volts everywhere else - convert here.
+                    row_volts = [v * 1e-6 for v in row]
+                    self._sample_buffer.append(row_volts)
                     self._timestamp_buffer.append(ts)
                 self._current_time = timestamps[-1] - self._start_timestamp
 

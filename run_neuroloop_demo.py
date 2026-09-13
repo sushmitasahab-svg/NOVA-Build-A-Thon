@@ -46,6 +46,7 @@ LIVE_DEMO_CHANNEL_ORDER = [
     "Fp1", "Fp2", "F9", "F7", "F3", "Fz", "F4", "F8", "F10", "M1", "T7",
     "C3", "C4", "T8", "M2", "Cz", "P7", "P3", "Pz", "P4", "P8", "Oz", "O1", "O2",
 ]
+UNICORN_LIVE_CHANNEL_ORDER = ["Fz", "C3", "Cz", "C4", "Pz", "PO7", "Oz", "PO8"]
 
 # Each entry: path to the recording, which loader function to use, the
 # calibration duration for that session, and (optionally) real move
@@ -97,6 +98,10 @@ def parse_args():
                          help="Connect to a real, currently-broadcasting LSL EEG "
                               "stream instead of replaying a file (used for the "
                               "actual demo, or for rehearsal with rehearse_live_stream.py).")
+    parser.add_argument("--headset", choices=["ant", "unicorn"], default="ant",
+                         help="Which headset's channel layout to fall back to if "
+                              "the live LSL stream doesn't supply channel-name "
+                              "metadata itself. Only matters with --live.")
     return parser.parse_args()
 
 
@@ -106,8 +111,9 @@ def main():
     if args.live:
         calibration_duration = args.calibration if args.calibration is not None else 60.0
         move_timestamps = None
-        print("Connecting to live LSL EEG stream...")
-        source = LiveEEGSource(fallback_channel_names=LIVE_DEMO_CHANNEL_ORDER)
+        fallback_names = UNICORN_LIVE_CHANNEL_ORDER if args.headset == "unicorn" else LIVE_DEMO_CHANNEL_ORDER
+        print(f"Connecting to live LSL EEG stream (headset: {args.headset})...")
+        source = LiveEEGSource(fallback_channel_names=fallback_names)
     else:
         entry = RECORDINGS[args.source]
         cnt_path = entry["path"]
@@ -161,6 +167,9 @@ def main():
 
             if source.current_time <= calibration_duration:
                 baseline.add_calibration_sample(raw_features)
+                if int(source.current_time) % 10 == 0:
+                    print(f"  ...calibrating, t={source.current_time:.1f}s / "
+                          f"{calibration_duration:.0f}s  (buffer growing normally if this keeps counting up)")
 
             else:
                 if not calibrated:
